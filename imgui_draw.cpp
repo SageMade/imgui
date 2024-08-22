@@ -1625,7 +1625,7 @@ void ImDrawList::AddBezierQuadratic(const ImVec2& p1, const ImVec2& p2, const Im
     PathStroke(col, 0, thickness);
 }
 
-void ImDrawList::AddText(const ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end, float wrap_width, const ImVec4* cpu_fine_clip_rect)
+void ImDrawList::AddText(const ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end, float wrap_width, const ImVec4* cpu_fine_clip_rect, ImGuiTextJustify justify)
 {
     if ((col & IM_COL32_A_MASK) == 0)
         return;
@@ -1652,7 +1652,7 @@ void ImDrawList::AddText(const ImFont* font, float font_size, const ImVec2& pos,
         clip_rect.z = ImMin(clip_rect.z, cpu_fine_clip_rect->z);
         clip_rect.w = ImMin(clip_rect.w, cpu_fine_clip_rect->w);
     }
-    font->RenderText(this, font_size, pos, col, clip_rect, text_begin, text_end, wrap_width, cpu_fine_clip_rect != NULL);
+    font->RenderText(this, font_size, pos, col, clip_rect, text_begin, text_end, wrap_width, cpu_fine_clip_rect != NULL, justify);
 }
 
 void ImDrawList::AddText(const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end)
@@ -4019,7 +4019,7 @@ void ImFont::RenderChar(ImDrawList* draw_list, float size, const ImVec2& pos, Im
 }
 
 // Note: as with every ImDrawList drawing function, this expects that the font atlas texture is bound.
-void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, bool cpu_fine_clip) const
+void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, ImU32 col, const ImVec4& clip_rect, const char* text_begin, const char* text_end, float wrap_width, bool cpu_fine_clip, ImGuiTextJustify justify) const
 {
     if (!text_end)
         text_end = text_begin + strlen(text_begin); // ImGui:: functions generally already provides a valid text_end, so this is merely to handle direct calls.
@@ -4085,6 +4085,8 @@ void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, Im
     const ImU32 col_untinted = col | ~IM_COL32_A_MASK;
     const char* word_wrap_eol = NULL;
 
+    ImDrawVert* line_initial_vertex = vtx_write;
+
     while (s < text_end)
     {
         if (word_wrap_enabled)
@@ -4095,6 +4097,24 @@ void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, Im
 
             if (s >= word_wrap_eol)
             {
+                // Backtrack and shift X to center the text, violates DRY but inlines the function to improve perf 
+                if (justify == ImGuiTextJustify_Center) {
+                    float delta = (wrap_width - (x - start_x)) * 0.5f;
+                    while (line_initial_vertex != vtx_write) {
+                        line_initial_vertex->pos.x += delta;
+                        line_initial_vertex++;
+                    }
+                }
+                // Backtrack and shift X to right align the text, violates DRY but inlines the function to improve perf 
+                if (justify == ImGuiTextJustify_Right) {
+                    float delta = (wrap_width - (x - start_x));
+                    while (line_initial_vertex != vtx_write) {
+                        line_initial_vertex->pos.x += delta;
+                        line_initial_vertex++;
+                    }
+                }
+
+                line_initial_vertex = vtx_write;
                 x = start_x;
                 y += line_height;
                 if (y > clip_rect.w)
@@ -4116,6 +4136,24 @@ void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, Im
         {
             if (c == '\n')
             {
+                // Backtrack and shift X to center the text
+                if (justify == ImGuiTextJustify_Center) {
+                    float delta = (wrap_width - (x - start_x)) * 0.5f;
+                    while (line_initial_vertex != vtx_write) {
+                        line_initial_vertex->pos.x += delta;
+                        line_initial_vertex++;
+                    }
+                }
+                // Backtrack and shift X to right align the text
+                if (justify == ImGuiTextJustify_Right) {
+                    float delta = (wrap_width - (x - start_x));
+                    while (line_initial_vertex != vtx_write) {
+                        line_initial_vertex->pos.x += delta;
+                        line_initial_vertex++;
+                    }
+                }
+
+                line_initial_vertex = vtx_write;
                 x = start_x;
                 y += line_height;
                 if (y > clip_rect.w)
@@ -4194,6 +4232,23 @@ void ImFont::RenderText(ImDrawList* draw_list, float size, const ImVec2& pos, Im
             }
         }
         x += char_width;
+    }
+
+    // Backtrack and shift X to center the text
+    if (justify == ImGuiTextJustify_Center) {
+        float delta = (wrap_width - (x - start_x)) * 0.5f;
+        while (line_initial_vertex != vtx_write) {
+            line_initial_vertex->pos.x += delta;
+            line_initial_vertex++;
+        }
+    }
+    // Backtrack and shift X to right align the text
+    if (justify == ImGuiTextJustify_Right) {
+        float delta = (wrap_width - (x - start_x));
+        while (line_initial_vertex != vtx_write) {
+            line_initial_vertex->pos.x += delta;
+            line_initial_vertex++;
+        }
     }
 
     // Give back unused vertices (clipped ones, blanks) ~ this is essentially a PrimUnreserve() action.

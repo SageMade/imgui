@@ -1322,6 +1322,7 @@ ImGuiStyle::ImGuiStyle()
     AntiAliasedFill             = true;             // Enable anti-aliased filled shapes (rounded rectangles, circles, etc.).
     CurveTessellationTol        = 1.25f;            // Tessellation tolerance when using PathBezierCurveTo() without a specific number of segments. Decrease for highly tessellated curves (higher quality, more polygons), increase to reduce quality.
     CircleTessellationMaxError  = 0.30f;            // Maximum error (in pixels) allowed when using AddCircle()/AddCircleFilled() or drawing rounded corner rectangles with no explicit segment count specified. Decrease for higher quality but more geometry.
+    TextJustify                 = ImGuiTextJustify_Left; // Default to left aligned text
 
     // Behaviors
     HoverStationaryDelay        = 0.15f;            // Delay for IsItemHovered(ImGuiHoveredFlags_Stationary). Time required to consider mouse stationary.
@@ -3363,6 +3364,7 @@ static const ImGuiDataVarInfo GStyleVarInfo[] =
     { ImGuiDataType_Float, 2, (ImU32)offsetof(ImGuiStyle, SeparatorTextAlign) },        // ImGuiStyleVar_SeparatorTextAlign
     { ImGuiDataType_Float, 2, (ImU32)offsetof(ImGuiStyle, SeparatorTextPadding) },      // ImGuiStyleVar_SeparatorTextPadding
     { ImGuiDataType_Float, 1, (ImU32)offsetof(ImGuiStyle, DockingSeparatorSize) },      // ImGuiStyleVar_DockingSeparatorSize
+    { ImGuiDataType_S32,   1, (ImU32)offsetof(ImGuiStyle, TextJustify) }                // ImGuiStyleVar_TextJustify
 };
 
 const ImGuiDataVarInfo* ImGui::GetStyleVarInfo(ImGuiStyleVar idx)
@@ -3400,6 +3402,20 @@ void ImGui::PushStyleVar(ImGuiStyleVar idx, const ImVec2& val)
     IM_ASSERT_USER_ERROR(0, "Calling PushStyleVar() variant with wrong type!");
 }
 
+void ImGui::PushStyleVar(ImGuiStyleVar idx, int val)
+{
+    ImGuiContext& g = *GImGui;
+    const ImGuiDataVarInfo* var_info = GetStyleVarInfo(idx);
+    if (var_info->Type == ImGuiDataType_S32 && var_info->Count == 1)
+    {
+        int* pvar = (int*)var_info->GetVarPtr(&g.Style);
+        g.StyleVarStack.push_back(ImGuiStyleMod(idx, *pvar));
+        *pvar = val;
+        return;
+    }
+    IM_ASSERT_USER_ERROR(0, "Calling PushStyleVar() variant with wrong type!");
+}
+
 void ImGui::PopStyleVar(int count)
 {
     ImGuiContext& g = *GImGui;
@@ -3416,6 +3432,7 @@ void ImGui::PopStyleVar(int count)
         void* data = info->GetVarPtr(&g.Style);
         if (info->Type == ImGuiDataType_Float && info->Count == 1)      { ((float*)data)[0] = backup.BackupFloat[0]; }
         else if (info->Type == ImGuiDataType_Float && info->Count == 2) { ((float*)data)[0] = backup.BackupFloat[0]; ((float*)data)[1] = backup.BackupFloat[1]; }
+        else if (info->Type == ImGuiDataType_S32 && info->Count == 1)   { ((int*)data)[0] = backup.BackupInt[0]; }
         g.StyleVarStack.pop_back();
         count--;
     }
@@ -3536,7 +3553,7 @@ void ImGui::RenderText(ImVec2 pos, const char* text, const char* text_end, bool 
     }
 }
 
-void ImGui::RenderTextWrapped(ImVec2 pos, const char* text, const char* text_end, float wrap_width)
+void ImGui::RenderTextWrapped(ImVec2 pos, const char* text, const char* text_end, float wrap_width, ImGuiTextJustify justify)
 {
     ImGuiContext& g = *GImGui;
     ImGuiWindow* window = g.CurrentWindow;
@@ -3546,7 +3563,7 @@ void ImGui::RenderTextWrapped(ImVec2 pos, const char* text, const char* text_end
 
     if (text != text_end)
     {
-        window->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_end, wrap_width);
+        window->DrawList->AddText(g.Font, g.FontSize, pos, GetColorU32(ImGuiCol_Text), text, text_end, wrap_width, nullptr, justify);
         if (g.LogEnabled)
             LogRenderedText(&pos, text, text_end);
     }
